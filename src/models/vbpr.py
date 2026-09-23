@@ -24,14 +24,14 @@ class VBPR(GeneralRecommender):
         super(VBPR, self).__init__(config, dataloader)
 
         # load parameters info
-        self.u_embedding_size = self.i_embedding_size = config['embedding_size']
+        self.u_embedding_size = self.i_embedding_size = config['embedding_size'] # 64
         self.reg_weight = config['reg_weight']  # float32 type: the weight decay for l2 normalizaton
 
         # define layers and loss
         self.u_embedding = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_users, self.u_embedding_size * 2)))
         self.i_embedding = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_items, self.i_embedding_size)))
         if self.v_feat is not None and self.t_feat is not None:
-            self.item_raw_features = torch.cat((self.t_feat, self.v_feat), -1)
+            self.item_raw_features = torch.cat((self.t_feat, self.v_feat), -1) # 直接拼接，并无复杂的 attention、GNN 或跨模态交互，是最原始的表示学习/数据融合
         elif self.v_feat is not None:
             self.item_raw_features = self.v_feat
         else:

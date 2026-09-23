@@ -56,7 +56,7 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
         config['hyper_parameters'] = ['seed'] + config['hyper_parameters']
     for i in config['hyper_parameters']:
         hyper_ls.append(config[i] or [None])
-    # combinations
+    # combinations: all possible combinations of hyper parameters
     combinators = list(product(*hyper_ls))
     total_loops = len(combinators)
     for hyper_tuple in combinators:
