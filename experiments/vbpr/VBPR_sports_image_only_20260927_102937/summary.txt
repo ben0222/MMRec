@@ -1,0 +1,35 @@
+==========================================
+VBPR Ablation Experiment
+==========================================
+
+Experiment : VBPR_sports_image_only_20260927_102937
+Model      : VBPR
+Dataset    : sports
+Mode       : image_only
+
+Visual     : True
+Textual    : False
+
+Start      : 2026-09-27 10:29:41
+End        : 2026-09-27 13:21:59
+Duration   : 10338 seconds
+
+Git commit : 8f5f0069fabecc8a69d59dca233d6c63fd15f822
+
+==========================================
+FINAL BEST RESULT
+==========================================
+
+█████████████ BEST ████████████████
+27 Sep 13:21    INFO 	Parameters: ['seed', 'reg_weight']=(999, 2.0),
+Valid: recall@5: 0.0331    recall@10: 0.0528    recall@20: 0.0805    recall@50: 0.1320    ndcg@5: 0.0219    ndcg@10: 0.0283    ndcg@20: 0.0353    ndcg@50: 0.0456    precision@5: 0.0070    precision@10: 0.0056    precision@20: 0.0043    precision@50: 0.0028    map@5: 0.0179    map@10: 0.0205    map@20: 0.0224    map@50: 0.0240    ,
+Test: recall@5: 0.0343    recall@10: 0.0537    recall@20: 0.0830    recall@50: 0.1350    ndcg@5: 0.0224    ndcg@10: 0.0288    ndcg@20: 0.0364    ndcg@50: 0.0470    precision@5: 0.0077    precision@10: 0.0061    precision@20: 0.0047    precision@50: 0.0031    map@5: 0.0178    map@10: 0.0204    map@20: 0.0224    map@50: 0.0241    
+
+==========================================
+Files
+==========================================
+
+Full log   : /root/autodl-tmp/MMRec/experiments/vbpr/VBPR_sports_image_only_20260927_102937/full.log
+Config     : /root/autodl-tmp/MMRec/experiments/vbpr/VBPR_sports_image_only_20260927_102937/VBPR.yaml
+Environment: /root/autodl-tmp/MMRec/experiments/vbpr/VBPR_sports_image_only_20260927_102937/environment.txt
+GPU        : /root/autodl-tmp/MMRec/experiments/vbpr/VBPR_sports_image_only_20260927_102937/gpu.txt

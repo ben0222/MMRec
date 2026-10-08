@@ -1,0 +1,8 @@
+run_id,date,dataset,model,variant,seed,cl_loss,valid_recall20,test_recall20,test_ndcg20,test_precision20,test_map20,best_epoch,git_commit,log_path
+VBPR_IT,,sports,VBPR,image_text,999,,,0.0857,0.0383,,0.0242,,,
+VBPR_I,2026-09-27,sports,VBPR,image_only,999,,,0.0830,0.0364,,0.0224,119,8f5f0069fabecc8a69d59dca233d6c63fd15f822,experiments/vbpr/VBPR_sports_image_only_20260927_102937/full.log
+VBPR_T,2026-09-27,sports,VBPR,text_only,999,,,0.0709,0.0317,,0.0200,52,8f5f0069fabecc8a69d59dca233d6c63fd15f822,experiments/vbpr/VBPR_sports_text_only_20260927_145345/full.log
+MGCN_CL0,2026-10-08,sports,MGCN,no_cl,999,0.0,0.0979,0.0992,0.0444,0.0055,0.0280,110,8f5f0069fabecc8a69d59dca233d6c63fd15f822,experiments/mgcn/no_cl_20261008_091222/full.log
+MGCN_CL0001,2026-10-07,sports,MGCN,baseline,999,0.001,0.1062,0.1066,0.0470,0.0059,0.0293,63,,experiments/mgcn/MGCN_sports_baseline.log
+MGCN_CL001,2026-10-07,sports,MGCN,baseline,999,0.01,0.1103,0.1106,0.0499,0.0061,0.0318,41,,experiments/mgcn/MGCN_sports_baseline.log
+MGCN_CL01,2026-10-07,sports,MGCN,baseline,999,0.1,0.0362,0.0351,0.0171,0.0019,0.0117,0,,experiments/mgcn/MGCN_sports_baseline.log

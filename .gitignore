@@ -132,3 +132,17 @@ dmypy.json
 .pyre/
 
 .DS_Store
+
+# Research experiment artifacts
+experiments/**/environment.txt
+experiments/**/gpu.txt
+experiments/**/git_status.txt
+experiments/**/code_diff.patch
+
+# Model checkpoints
+*.pth
+*.ckpt
+
+# Editor temporary files
+*.swp
+*.swo

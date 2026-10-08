@@ -1,0 +1,8 @@
+model       : VBPR
+dataset     : sports
+use_visual  : False
+use_textual : True
+vision file : image_feat.npy
+text file   : text_feat.npy
+seed        : [999]
+reg_weight  : [2.0, 1.0, 0.1, 0.01, 0.001, 0.0001, 1e-05]
