@@ -139,6 +139,11 @@ experiments/**/gpu.txt
 experiments/**/git_status.txt
 experiments/**/code_diff.patch
 
+# Per-run artifacts are reproducibility snapshots kept locally or in external
+# artifact storage. They can contain large logs, environment details, and
+# copied untracked source; keep the small scripts and CSV summaries trackable.
+experiments/runs/
+
 # Model checkpoints
 *.pth
 *.ckpt

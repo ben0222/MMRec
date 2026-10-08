@@ -89,6 +89,9 @@ class Trainer(AbstractTrainer):
         self.best_valid_score = -1
         self.best_valid_result = tmp_dd
         self.best_test_upon_valid = tmp_dd
+        # This is deliberately metadata only: it does not change the existing
+        # early-stopping or evaluation behaviour.
+        self.best_valid_epoch = None
         self.train_loss_dict = dict()
         self.optimizer = self._build_optimizer()
 
@@ -279,6 +282,7 @@ class Trainer(AbstractTrainer):
                         self.logger.info(update_output)
                     self.best_valid_result = valid_result
                     self.best_test_upon_valid = test_result
+                    self.best_valid_epoch = epoch_idx
 
                 if stop_flag:
                     stop_output = '+++++Finished training, best eval result in epoch %d' % \
@@ -329,4 +333,3 @@ class Trainer(AbstractTrainer):
             plt.show()
         if save_path:
             plt.savefig(save_path)
-
