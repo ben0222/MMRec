@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import uuid
+import tempfile
+import logging
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -94,25 +96,55 @@ def load_overrides(config_path, set_values):
 
 
 def append_csv(path, row):
-    """Append a dictionary, preserving existing rows and growing columns safely."""
+    """
+    Append one experiment record while preserving existing data.
+
+    Supports schema evolution by adding new columns.
+    Uses atomic replacement to avoid corrupting existing CSV files.
+    """
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
     existing_rows = []
     fieldnames = []
-    if path.exists() and path.stat().st_size:
-        with path.open(newline='', encoding='utf-8') as handle:
-            reader = csv.DictReader(handle)
-            fieldnames = reader.fieldnames or []
+
+    if path.exists() and path.stat().st_size > 0:
+        with path.open("r", newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = list(reader.fieldnames or [])
             existing_rows = list(reader)
-    for field in row:
-        if field not in fieldnames:
-            fieldnames.append(field)
-    if not existing_rows and not path.exists():
-        existing_rows = []
-    with path.open('w', newline='', encoding='utf-8') as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(existing_rows)
-        writer.writerow(row)
+
+    for key in row:
+        if key not in fieldnames:
+            fieldnames.append(key)
+
+    temp_path = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            newline="",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            temp_path = Path(f.name)
+
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(existing_rows)
+            writer.writerow(row)
+
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.replace(temp_path, path)
+
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink()
 
 
 def compact(value):
@@ -196,27 +228,107 @@ def run_experiment(args):
         'evaluation_note': 'MMRec training and epoch evaluation are unchanged; records select hyperparameters by validation metric.',
     }
     write_json(run_dir / 'metadata.json', metadata)
-    with (run_dir / 'full.log').open('w', encoding='utf-8') as log_file:
-        try:
+    root_logger = logging.getLogger()
+
+    # Preserve any handlers installed before this experiment.
+    original_handlers = root_logger.handlers[:]
+    original_level = root_logger.level
+
+    try:
+        with (run_dir / "full.log").open(
+            "w", encoding="utf-8"
+        ) as log_file:
+
             with redirect_stdout(log_file), redirect_stderr(log_file):
-                result = quick_start(args.model, args.dataset, overrides,
-                                     save_model=not args.no_save_model, mg=args.mg)
-        except Exception as error:
-            metadata['finished_at'] = dt.datetime.now().astimezone().isoformat()
-            metadata['status'] = 'failed'
-            metadata['error'] = '{}: {}'.format(type(error).__name__, error)
-            write_json(run_dir / 'metadata.json', metadata)
-            raise
-    metadata['finished_at'] = dt.datetime.now().astimezone().isoformat()
-    metadata['status'] = 'completed'
-    write_json(run_dir / 'metadata.json', metadata)
-    write_json(run_dir / 'resolved_config.json', result['resolved_config'])
-    write_json(run_dir / 'results.json', result)
-    combination_dir = run_dir / 'combinations'
-    combination_dir.mkdir()
-    for combination in result['combinations']:
-        write_json(combination_dir / '{:03d}.json'.format(combination['index']), combination)
-    record_result_indexes(run_id, args.tag, result)
+
+                # Force MMRec to initialize its own handlers
+                # for this experiment.
+                for handler in root_logger.handlers[:]:
+                    root_logger.removeHandler(handler)
+
+                try:
+                    result = quick_start(
+                        args.model,
+                        args.dataset,
+                        overrides,
+                        save_model=not args.no_save_model,
+                        mg=args.mg,
+                    )
+                finally:
+                    # Flush and close experiment-specific handlers.
+                    for handler in root_logger.handlers[:]:
+                        root_logger.removeHandler(handler)
+                        handler.flush()
+                        handler.close()
+
+    except Exception as error:
+        metadata["finished_at"] = (
+            dt.datetime.now().astimezone().isoformat()
+        )
+        metadata["status"] = "failed"
+        metadata["error"] = (
+            f"{type(error).__name__}: {error}"
+        )
+        write_json(run_dir / "metadata.json", metadata)
+        raise
+
+    finally:
+        # Restore the previous logging environment.
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+        for handler in original_handlers:
+            root_logger.addHandler(handler)
+
+        root_logger.setLevel(original_level)
+    try:
+        write_json(
+            run_dir / "resolved_config.json",
+            result["resolved_config"],
+        )
+
+        write_json(
+            run_dir / "results.json",
+            result,
+        )
+
+        combination_dir = run_dir / "combinations"
+        combination_dir.mkdir()
+
+        for combination in result["combinations"]:
+            write_json(
+                combination_dir / "{:03d}.json".format(
+                    combination["index"]
+                ),
+                combination,
+            )
+
+        record_result_indexes(run_id, args.tag, result)
+
+    except Exception as error:
+        metadata["finished_at"] = (
+            dt.datetime.now().astimezone().isoformat()
+        )
+        metadata["status"] = "failed"
+        metadata["error"] = (
+            f"{type(error).__name__}: {error}"
+        )
+
+        write_json(
+            run_dir / "metadata.json",
+            metadata,
+        )
+        raise
+
+    metadata["finished_at"] = (
+        dt.datetime.now().astimezone().isoformat()
+    )
+    metadata["status"] = "completed"
+
+    write_json(
+        run_dir / "metadata.json",
+        metadata,
+    )
     return run_id, run_dir, result
 
 

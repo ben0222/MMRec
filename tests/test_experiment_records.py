@@ -1,8 +1,12 @@
+import argparse
 import csv
 import importlib.util
+import logging
+import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +53,161 @@ class ExperimentRecordTests(unittest.TestCase):
         self.assertIn('0.01', row['hyperparameters_json'])
         self.assertEqual(row['legacy_console_hyperparameter_selection'], 'test_metric')
 
+    def test_append_csv_preserves_original_when_replace_fails(self):
+        from experiments.run import append_csv
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "results.csv"
+            original = "run_id,model\nold_run,VBPR\n"
+            csv_path.write_text(original, encoding="utf-8")
+
+            with patch(
+                "experiments.run.os.replace",
+                side_effect=OSError("simulated replacement failure"),
+            ):
+                with self.assertRaises(OSError):
+                    append_csv(
+                        csv_path,
+                        {"run_id": "new_run", "model": "MGCN"},
+                    )
+
+            self.assertEqual(
+                csv_path.read_text(encoding="utf-8"),
+                original,
+            )
+
+            # Failed writes must not leave temporary CSV files behind.
+            self.assertEqual(
+                list(Path(tmpdir).iterdir()),
+                [csv_path],
+            )
+
+    def test_run_experiment_marks_failed_when_recording_fails(self):
+        import argparse
+        import json
+
+        from experiments.run import run_experiment
+
+        fake_result = {
+            "model": "VBPR",
+            "dataset": "sports",
+            "valid_metric": "recall@20",
+            "resolved_config": {},
+            "combinations": [],
+            "best_by_validation_index": None,
+        }
+
+        args = argparse.Namespace(
+            model="VBPR",
+            dataset="sports",
+            tag="failure-test",
+            config=None,
+            set_values=[],
+            no_save_model=True,
+            mg=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "test_run"
+
+            with (
+                patch(
+                    "experiments.run.create_run_directory",
+                    return_value=("test_run", run_dir),
+                ),
+                patch("experiments.run.snapshot_git"),
+                patch(
+                    "experiments.run.record_result_indexes",
+                    side_effect=OSError("simulated CSV failure"),
+                ),
+                patch(
+                    "utils.quick_start.quick_start",
+                    return_value=fake_result,
+                ),
+            ):
+                run_dir.mkdir()
+
+                with self.assertRaises(OSError):
+                    run_experiment(args)
+
+            metadata = json.loads(
+                (run_dir / "metadata.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(metadata["status"], "failed")
+            self.assertIn("simulated CSV failure", metadata["error"])
+
+    def test_run_experiment_captures_logging_and_restores_handlers(self):
+        from experiments.run import run_experiment
+
+        fake_result = {
+            "model": "VBPR",
+            "dataset": "sports",
+            "valid_metric": "recall@20",
+            "resolved_config": {},
+            "combinations": [],
+            "best_by_validation_index": None,
+        }
+
+        args = argparse.Namespace(
+            model="VBPR",
+            dataset="sports",
+            tag="logging-test",
+            config=None,
+            set_values=[],
+            no_save_model=True,
+            mg=False,
+        )
+
+        root_logger = logging.getLogger()
+        original_handlers = root_logger.handlers[:]
+        original_level = root_logger.level
+
+        def fake_quick_start(*args, **kwargs):
+            # Simulate MMRec's init_logger() creating a StreamHandler.
+            logging.basicConfig(level=logging.INFO)
+            logging.getLogger().info("MMREC_LOG_CAPTURE_TEST")
+            print("MMREC_STDOUT_CAPTURE_TEST")
+            return fake_result
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir) / "test_run"
+            run_dir.mkdir()
+
+            with (
+                patch(
+                    "experiments.run.create_run_directory",
+                    return_value=("test_run", run_dir),
+                ),
+                patch("experiments.run.snapshot_git"),
+                patch(
+                    "experiments.run.record_result_indexes",
+                ),
+                patch(
+                    "utils.quick_start.quick_start",
+                    side_effect=fake_quick_start,
+                ),
+            ):
+                run_experiment(args)
+
+            full_log = (run_dir / "full.log").read_text(
+                encoding="utf-8"
+            )
+
+            self.assertIn("MMREC_LOG_CAPTURE_TEST", full_log)
+            self.assertIn("MMREC_STDOUT_CAPTURE_TEST", full_log)
+
+            metadata = json.loads(
+                (run_dir / "metadata.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(metadata["status"], "completed")
+
+        self.assertEqual(root_logger.handlers, original_handlers)
+        self.assertEqual(root_logger.level, original_level)
 
 if __name__ == '__main__':
     unittest.main()
