@@ -208,6 +208,19 @@ class ExperimentRecordTests(unittest.TestCase):
 
         self.assertEqual(root_logger.handlers, original_handlers)
         self.assertEqual(root_logger.level, original_level)
+        
+    def test_working_directory_restores_after_exception(self):
+        from experiments.run import working_directory
+
+        original = Path.cwd()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(RuntimeError):
+                with working_directory(tmpdir):
+                    self.assertEqual(Path.cwd().resolve(), Path(tmpdir).resolve())
+                    raise RuntimeError("simulated failure")
+
+        self.assertEqual(Path.cwd(), original)
 
 if __name__ == '__main__':
     unittest.main()

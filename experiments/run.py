@@ -17,10 +17,20 @@ import sys
 import uuid
 import tempfile
 import logging
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+@contextmanager
+def working_directory(path):
+    """Temporarily change the working directory."""
+    previous = Path.cwd()
+
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(previous)
 SRC_ROOT = REPO_ROOT / 'src'
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -247,13 +257,15 @@ def run_experiment(args):
                     root_logger.removeHandler(handler)
 
                 try:
-                    result = quick_start(
-                        args.model,
-                        args.dataset,
-                        overrides,
-                        save_model=not args.no_save_model,
-                        mg=args.mg,
-                    )
+                    with working_directory(REPO_ROOT / "src"):
+                        result = quick_start(
+                            args.model,
+                            args.dataset,
+                            overrides,
+                            save_model=not args.no_save_model,
+                            mg=args.mg,
+                        )
+
                 finally:
                     # Flush and close experiment-specific handlers.
                     for handler in root_logger.handlers[:]:
