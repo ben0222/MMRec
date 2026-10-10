@@ -1,6 +1,7 @@
 import argparse
 import csv
 import importlib.util
+import io
 import logging
 import json
 import tempfile
@@ -172,6 +173,8 @@ class ExperimentRecordTests(unittest.TestCase):
             print("MMREC_STDOUT_CAPTURE_TEST")
             return fake_result
 
+        terminal_output = io.StringIO()
+        terminal_error = io.StringIO()
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir) / "test_run"
             run_dir.mkdir()
@@ -182,13 +185,13 @@ class ExperimentRecordTests(unittest.TestCase):
                     return_value=("test_run", run_dir),
                 ),
                 patch("experiments.run.snapshot_git"),
-                patch(
-                    "experiments.run.record_result_indexes",
-                ),
+                patch("experiments.run.record_result_indexes"),
                 patch(
                     "utils.quick_start.quick_start",
                     side_effect=fake_quick_start,
                 ),
+                patch("sys.stdout", terminal_output),
+                patch("sys.stderr", terminal_error),
             ):
                 run_experiment(args)
 
@@ -198,6 +201,15 @@ class ExperimentRecordTests(unittest.TestCase):
 
             self.assertIn("MMREC_LOG_CAPTURE_TEST", full_log)
             self.assertIn("MMREC_STDOUT_CAPTURE_TEST", full_log)
+            self.assertIn(
+                "MMREC_LOG_CAPTURE_TEST",
+                terminal_error.getvalue()
+            )
+
+            self.assertIn(
+                "MMREC_STDOUT_CAPTURE_TEST",
+                terminal_output.getvalue()
+            )
 
             metadata = json.loads(
                 (run_dir / "metadata.json").read_text(
@@ -231,6 +243,27 @@ class ExperimentRecordTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("'model': config['model']", source)
+        
+    def test_tee_stream_writes_to_terminal_and_log(self):
+        from experiments.run import TeeStream
+
+        terminal = io.StringIO()
+        log_file = io.StringIO()
+
+        tee = TeeStream(terminal, log_file)
+
+        tee.write("Epoch 1: loss=0.5\n")
+        tee.flush()
+
+        self.assertEqual(
+            terminal.getvalue(),
+            "Epoch 1: loss=0.5\n"
+        )
+
+        self.assertEqual(
+            log_file.getvalue(),
+            "Epoch 1: loss=0.5\n"
+        )
 
 if __name__ == '__main__':
     unittest.main()

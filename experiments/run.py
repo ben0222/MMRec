@@ -31,6 +31,31 @@ def working_directory(path):
         yield
     finally:
         os.chdir(previous)
+        
+class TeeStream:
+    """Write output to both the terminal and an experiment log file."""
+
+    def __init__(self, terminal, log_file):
+        self.terminal = terminal
+        self.log_file = log_file
+
+    def write(self, text):
+        self.terminal.write(text)
+        self.log_file.write(text)
+        self.log_file.flush()
+        return len(text)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def isatty(self):
+        return self.terminal.isatty()
+
+    @property
+    def encoding(self):
+        return self.terminal.encoding
+
 SRC_ROOT = REPO_ROOT / 'src'
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
@@ -245,12 +270,12 @@ def run_experiment(args):
     original_level = root_logger.level
 
     try:
-        with (run_dir / "full.log").open(
-            "w", encoding="utf-8"
-        ) as log_file:
+        with (run_dir / "full.log").open("w", encoding="utf-8") as log_file:
 
-            with redirect_stdout(log_file), redirect_stderr(log_file):
+            tee_stdout = TeeStream(sys.stdout, log_file)
+            tee_stderr = TeeStream(sys.stderr, log_file)
 
+            with redirect_stdout(tee_stdout), redirect_stderr(tee_stderr):
                 # Force MMRec to initialize its own handlers
                 # for this experiment.
                 for handler in root_logger.handlers[:]:
