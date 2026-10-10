@@ -221,6 +221,16 @@ class ExperimentRecordTests(unittest.TestCase):
                     raise RuntimeError("simulated failure")
 
         self.assertEqual(Path.cwd(), original)
+        
+    def test_structured_result_uses_model_name(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "utils"
+            / "quick_start.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("'model': config['model']", source)
 
 if __name__ == '__main__':
     unittest.main()

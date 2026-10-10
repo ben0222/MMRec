@@ -157,7 +157,7 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
             'recorded_hyperparameter_selection': 'validation_metric',
             'note': 'Training and evaluation behaviour is unchanged in phase one.',
         },
-        'model': model,
+        'model': config['model'],
         'dataset': config['dataset'],
         'valid_metric': val_metric,
         'valid_metric_bigger': config['valid_metric_bigger'],
