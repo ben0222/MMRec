@@ -141,7 +141,7 @@ experiments/**/code_diff.patch
 
 # Per-run artifacts are reproducibility snapshots kept locally or in external
 # artifact storage. They can contain large logs, environment details, and
-# copied untracked source; keep the small scripts and CSV summaries trackable.
+# copied untracked source; keep scripts and experiment configurations trackable.
 experiments/runs/
 
 # Model checkpoints
@@ -157,3 +157,4 @@ experiments/runs/
 /experiments/runs.csv
 /experiments/runs/
 /experiments/*.csv.bak
+/experiments/sweeps/

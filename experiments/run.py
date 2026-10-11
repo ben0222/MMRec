@@ -21,6 +21,11 @@ from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+from experiments.state import atomic_json, code_identity, expand, resolve_config
+
+
 @contextmanager
 def working_directory(path):
     """Temporarily change the working directory."""
@@ -61,13 +66,14 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 
-SENSITIVE_KEY_PARTS = ('api_key', 'password', 'passwd', 'secret', 'token')
+SENSITIVE_KEY_PARTS = ('api_key', 'password', 'passwd', 'secret')
 SOURCE_SUFFIXES = {'.py', '.yaml', '.yml', '.json', '.sh'}
 
 
 def json_safe(value, key=None):
     """Make values serializable and redact likely credentials in snapshots."""
-    if key and any(part in key.lower() for part in SENSITIVE_KEY_PARTS):
+    if key and (any(part in key.lower() for part in SENSITIVE_KEY_PARTS)
+                or key.lower() == 'token' or key.lower().endswith('_token')):
         return '<redacted>'
     if isinstance(value, dict):
         return {str(k): json_safe(v, str(k)) for k, v in value.items()}
@@ -84,9 +90,7 @@ def json_safe(value, key=None):
 
 
 def write_json(path, payload):
-    with path.open('w', encoding='utf-8') as handle:
-        json.dump(json_safe(payload), handle, indent=2, sort_keys=True)
-        handle.write('\n')
+    atomic_json(path, json_safe(payload))
 
 
 def command_output(args):
@@ -119,7 +123,10 @@ def load_overrides(config_path, set_values):
     overrides = {}
     if config_path:
         with Path(config_path).open(encoding='utf-8') as handle:
-            overrides = yaml.safe_load(handle) or {}
+            # JSON is used internally by sweeps. YAML's float resolver interprets
+            # JSON scientific notation (e.g. 1e-12) as strings.
+            overrides = (json.load(handle) if Path(config_path).suffix == '.json'
+                         else yaml.safe_load(handle)) or {}
         if not isinstance(overrides, dict):
             raise ValueError('--config must contain a YAML mapping')
     for assignment in set_values:
@@ -131,6 +138,17 @@ def load_overrides(config_path, set_values):
 
 
 def append_csv(path, row):
+    from experiments.state import exclusive_lock
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Locks live in the already ignored runs tree, never alongside tracked code.
+    lock_root = path.parent / 'runs'
+    lock_root.mkdir(parents=True, exist_ok=True)
+    with exclusive_lock(lock_root / '.csv.lock'):
+        _append_csv(path, row)
+
+
+def _append_csv(path, row):
     """
     Append one experiment record while preserving existing data.
 
@@ -148,6 +166,15 @@ def append_csv(path, row):
             reader = csv.DictReader(f)
             fieldnames = list(reader.fieldnames or [])
             existing_rows = list(reader)
+
+    # Re-indexing the same committed run must not duplicate its CSV rows.
+    identity_keys = ['run_id'] + (['combination_index'] if 'combination_index' in row else [])
+    if 'run_id' in row:
+        for existing in existing_rows:
+            if all(existing.get(key) == str(row[key]) for key in identity_keys):
+                if any(existing.get(key, '') != ('' if value is None else str(value)) for key, value in row.items()):
+                    raise ValueError('Conflicting CSV record for run {}'.format(row['run_id']))
+                return
 
     for key in row:
         if key not in fieldnames:
@@ -243,11 +270,28 @@ def record_result_indexes(run_id, tag, result):
 
 
 def run_experiment(args):
+    overrides = load_overrides(args.config, args.set_values)
+    context = None
+    if getattr(args, 'single_combination', False):
+        resolved = resolve_config(args.model, args.dataset, overrides, args.mg)
+        if len(expand(resolved)) != 1:
+            raise ValueError('Single-combination runner refuses multiple combinations')
+        if getattr(args, 'sweep_context', None):
+            context = json.loads(Path(args.sweep_context).read_text(encoding='utf-8'))
+            if (resolved != context['resolved_config'] or code_identity() != context['code_identity']
+                    or context['options'] != {'mg': args.mg, 'save_model': not args.no_save_model}):
+                raise ValueError('Sweep configuration or code changed before training')
     from utils.quick_start import quick_start
 
-    overrides = load_overrides(args.config, args.set_values)
     runs_root = REPO_ROOT / 'experiments' / 'runs'
-    run_id, run_dir = create_run_directory(args.model, args.dataset, args.tag, runs_root)
+    if getattr(args, 'run_dir', None):
+        run_dir = Path(args.run_dir).resolve()
+        if run_dir.parent != runs_root.resolve():
+            raise ValueError('--run-dir must be directly inside experiments/runs')
+        run_dir.mkdir(parents=True, exist_ok=False)
+        run_id = run_dir.name
+    else:
+        run_id, run_dir = create_run_directory(args.model, args.dataset, args.tag, runs_root)
     snapshot_git(run_dir)
     metadata = {
         'schema_version': 1,
@@ -262,6 +306,8 @@ def run_experiment(args):
         'phase': 1,
         'evaluation_note': 'MMRec training and epoch evaluation are unchanged; records select hyperparameters by validation metric.',
     }
+    if context:
+        metadata['sweep_context'] = context
     write_json(run_dir / 'metadata.json', metadata)
     root_logger = logging.getLogger()
 
@@ -319,6 +365,11 @@ def run_experiment(args):
 
         root_logger.setLevel(original_level)
     try:
+        if context:
+            from experiments.sweep import validate_result
+            validate_result(result, context)
+            if code_identity() != context['code_identity']:
+                raise ValueError('Source changed during training')
         write_json(
             run_dir / "resolved_config.json",
             result["resolved_config"],
@@ -379,6 +430,9 @@ def parse_args(argv=None):
                         help='YAML-parsed override; may be supplied more than once.')
     parser.add_argument('--no-save-model', action='store_true', help='Pass save_model=False to MMRec.')
     parser.add_argument('--mg', action='store_true', help='Enable the existing MMRec mg configuration path.')
+    parser.add_argument('--single-combination', action='store_true', help='Refuse a search with more than one combination.')
+    parser.add_argument('--run-dir', help=argparse.SUPPRESS)
+    parser.add_argument('--sweep-context', help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
 

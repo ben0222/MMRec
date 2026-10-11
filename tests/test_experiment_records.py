@@ -79,9 +79,10 @@ class ExperimentRecordTests(unittest.TestCase):
 
             # Failed writes must not leave temporary CSV files behind.
             self.assertEqual(
-                list(Path(tmpdir).iterdir()),
+                list(Path(tmpdir).glob('*.csv')),
                 [csv_path],
             )
+            self.assertEqual(list(Path(tmpdir).glob('.*.tmp')), [])
 
     def test_run_experiment_marks_failed_when_recording_fails(self):
         import argparse
