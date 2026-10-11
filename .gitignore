@@ -151,3 +151,9 @@ experiments/runs/
 # Editor temporary files
 *.swp
 *.swo
+
+# Generated experiment records
+/experiments/results.csv
+/experiments/runs.csv
+/experiments/runs/
+/experiments/*.csv.bak
